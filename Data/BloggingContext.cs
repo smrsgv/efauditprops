@@ -29,10 +29,6 @@ public class BloggingContext : DbContext
             entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
             entity.Property(e => e.Description).HasMaxLength(1000);
 
-            // Configure audit properties
-            entity.Property(e => e.CreatedAt).IsRequired();
-            entity.Property(e => e.UpdatedAt).IsRequired();
-
             entity.HasMany(e => e.Posts)
                   .WithOne(p => p.Blog)
                   .HasForeignKey(p => p.BlogId)
@@ -46,10 +42,6 @@ public class BloggingContext : DbContext
             entity.Property(e => e.Title).HasMaxLength(300).IsRequired();
             entity.Property(e => e.Content).IsRequired();
 
-            // Configure audit properties
-            entity.Property(e => e.CreatedAt).IsRequired();
-            entity.Property(e => e.UpdatedAt).IsRequired();
-
             entity.HasMany(e => e.Comments)
                   .WithOne(c => c.Post)
                   .HasForeignKey(c => c.PostId)
@@ -62,15 +54,15 @@ public class BloggingContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Author).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Text).HasMaxLength(2000).IsRequired();
-
-            // Configure audit properties
-            entity.Property(e => e.CreatedAt).IsRequired();
-            entity.Property(e => e.UpdatedAt).IsRequired();
         });
+
+        // Apply audit property configuration to ALL entities implementing IAuditableEntity
+        // This single line replaces repeated configuration for each entity
+        modelBuilder.ConfigureAuditableEntities();
     }
 
     /// <summary>
-    /// Synchronous SaveChanges override - calls the async version.
+    /// Synchronous SaveChanges override.
     /// </summary>
     public override int SaveChanges()
     {
@@ -108,35 +100,23 @@ public class BloggingContext : DbContext
     /// <summary>
     /// Sets CreatedAt and UpdatedAt properties for all tracked entities
     /// that implement IAuditableEntity.
-    ///
-    /// Key behaviors:
-    /// - For Added entities: Sets both CreatedAt and UpdatedAt to current UTC time
-    /// - For Modified entities: Only updates UpdatedAt
-    /// - Handles nested/related entities automatically via change tracker
     /// </summary>
     private void SetAuditProperties()
     {
-        // Ensure change detection has run
         ChangeTracker.DetectChanges();
 
         var utcNow = DateTime.UtcNow;
 
-        // Get all tracked entities that implement IAuditableEntity
-        var auditableEntries = ChangeTracker.Entries<IAuditableEntity>();
-
-        foreach (var entry in auditableEntries)
+        foreach (var entry in ChangeTracker.Entries<IAuditableEntity>())
         {
             switch (entry.State)
             {
                 case EntityState.Added:
-                    // New entity - set both timestamps
                     entry.Entity.CreatedAt = utcNow;
                     entry.Entity.UpdatedAt = utcNow;
                     break;
 
                 case EntityState.Modified:
-                    // Existing entity being modified - only update UpdatedAt
-                    // Ensure CreatedAt is not modified (protect against accidental changes)
                     entry.Property(e => e.CreatedAt).IsModified = false;
                     entry.Entity.UpdatedAt = utcNow;
                     break;
