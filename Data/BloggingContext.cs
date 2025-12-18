@@ -5,15 +5,10 @@ namespace EfAuditPropsPoC.Data;
 
 /// <summary>
 /// DbContext with automatic audit property population.
-/// Overrides SaveChanges/SaveChangesAsync to set CreatedAt and UpdatedAt
-/// for all entities implementing IAuditableEntity.
+/// Uses IEntityTypeConfiguration classes (with base class) for configuration.
 /// </summary>
-public class BloggingContext : DbContext
+public class BloggingContext(DbContextOptions<BloggingContext> options) : DbContext(options)
 {
-    public BloggingContext(DbContextOptions<BloggingContext> options) : base(options)
-    {
-    }
-
     public DbSet<Blog> Blogs => Set<Blog>();
     public DbSet<Post> Posts => Set<Post>();
     public DbSet<Comment> Comments => Set<Comment>();
@@ -22,85 +17,35 @@ public class BloggingContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        // Configure Blog entity
-        modelBuilder.Entity<Blog>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
-            entity.Property(e => e.Description).HasMaxLength(1000);
-
-            entity.HasMany(e => e.Posts)
-                  .WithOne(p => p.Blog)
-                  .HasForeignKey(p => p.BlogId)
-                  .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        // Configure Post entity
-        modelBuilder.Entity<Post>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Title).HasMaxLength(300).IsRequired();
-            entity.Property(e => e.Content).IsRequired();
-
-            entity.HasMany(e => e.Comments)
-                  .WithOne(c => c.Post)
-                  .HasForeignKey(c => c.PostId)
-                  .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        // Configure Comment entity
-        modelBuilder.Entity<Comment>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Author).HasMaxLength(100).IsRequired();
-            entity.Property(e => e.Text).HasMaxLength(2000).IsRequired();
-        });
-
-        // Apply audit property configuration to ALL entities implementing IAuditableEntity
-        // This single line replaces repeated configuration for each entity
-        modelBuilder.ConfigureAuditableEntities();
+        // Auto-discover and apply all IEntityTypeConfiguration classes
+        // Each inherits from AuditableEntityConfiguration<T> which configures audit properties
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(BloggingContext).Assembly);
     }
 
-    /// <summary>
-    /// Synchronous SaveChanges override.
-    /// </summary>
     public override int SaveChanges()
     {
         SetAuditProperties();
         return base.SaveChanges();
     }
 
-    /// <summary>
-    /// Synchronous SaveChanges with acceptAllChangesOnSuccess override.
-    /// </summary>
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         SetAuditProperties();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
-    /// <summary>
-    /// Async SaveChangesAsync override - sets audit properties before saving.
-    /// </summary>
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         SetAuditProperties();
         return await base.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Async SaveChangesAsync with acceptAllChangesOnSuccess override.
-    /// </summary>
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         SetAuditProperties();
         return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
 
-    /// <summary>
-    /// Sets CreatedAt and UpdatedAt properties for all tracked entities
-    /// that implement IAuditableEntity.
-    /// </summary>
     private void SetAuditProperties()
     {
         ChangeTracker.DetectChanges();
